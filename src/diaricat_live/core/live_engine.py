@@ -84,6 +84,49 @@ class LiveEngine:
     # Whisper model (lazy-loaded, shared across sessions)
     # ------------------------------------------------------------------
 
+    def _load_model_sync(self) -> WhisperModel:
+        """Synchronous model loading — runs in executor to avoid blocking."""
+        device = self.settings.whisper_device
+        compute = self.settings.whisper_compute_type
+
+        if device == "auto":
+            device = "cuda"
+
+        logger.info(
+            "Loading Whisper model=%s device=%s compute=%s",
+            self.settings.whisper_model, device, compute,
+        )
+
+        loaded = False
+        if device != "cpu":
+            try:
+                import numpy as np
+
+                model = WhisperModel(
+                    self.settings.whisper_model,
+                    device=device,
+                    compute_type=compute,
+                )
+                # Validate CUDA actually works with a tiny encode test
+                test_audio = np.zeros(16000, dtype=np.float32)
+                features = model.feature_extractor(test_audio)
+                model.model.encode(features)
+                self._whisper_model = model
+                loaded = True
+                logger.info("Whisper model loaded on %s", device)
+            except Exception as exc:
+                logger.warning("CUDA runtime failed (%s), falling back to CPU", exc)
+
+        if not loaded:
+            self._whisper_model = WhisperModel(
+                self.settings.whisper_model,
+                device="cpu",
+                compute_type="int8",
+            )
+            logger.info("Whisper model loaded on CPU (int8)")
+
+        return self._whisper_model
+
     async def _get_model(self) -> WhisperModel:
         if self._whisper_model is not None:
             return self._whisper_model
@@ -92,36 +135,8 @@ class LiveEngine:
             if self._whisper_model is not None:
                 return self._whisper_model
 
-            device = self.settings.whisper_device
-            if device == "auto":
-                device = "cuda"  # fallback handled below
-
-            logger.info(
-                "Loading Whisper model=%s device=%s compute=%s",
-                self.settings.whisper_model,
-                device,
-                self.settings.whisper_compute_type,
-            )
-
-            try:
-                self._whisper_model = WhisperModel(
-                    self.settings.whisper_model,
-                    device=device,
-                    compute_type=self.settings.whisper_compute_type,
-                )
-            except Exception:
-                if device != "cpu":
-                    logger.warning("CUDA failed, falling back to CPU")
-                    self._whisper_model = WhisperModel(
-                        self.settings.whisper_model,
-                        device="cpu",
-                        compute_type="int8",
-                    )
-                else:
-                    raise
-
-            logger.info("Whisper model loaded")
-            return self._whisper_model
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, self._load_model_sync)
 
     # ------------------------------------------------------------------
     # Session lifecycle

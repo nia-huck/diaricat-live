@@ -81,7 +81,7 @@ class StreamCaptureService:
         buffer = bytearray()
         while not handle.stopped:
             try:
-                data = await asyncio.wait_for(stdout.read(4096), timeout=10)
+                data = await asyncio.wait_for(stdout.read(4096), timeout=30)
             except asyncio.TimeoutError:
                 # Stream may have stalled — yield what we have
                 if buffer:
@@ -110,33 +110,43 @@ class StreamCaptureService:
     # ------------------------------------------------------------------
 
     async def _resolve_audio_url(self, url: str, handle: CaptureHandle) -> str:
-        """Use yt-dlp to extract the best audio stream URL."""
-        cmd = [
-            self.settings.ytdlp_path,
-            "--no-download",
-            "-f", "bestaudio",
-            "--print", "urls",
-            "--no-warnings",
-            "--no-playlist",
-            url,
-        ]
-        logger.debug("Resolving audio URL: %s", " ".join(cmd))
+        """Use yt-dlp to extract the best audio stream URL.
 
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        Tries 'bestaudio' first, falls back to 'bestaudio/best' for HLS
+        streams that only have combined video+audio formats.
+        """
+        format_specs = ["bestaudio", "bestaudio/best", "best"]
+
+        for fmt in format_specs:
+            cmd = [
+                self.settings.ytdlp_path,
+                "--no-download",
+                "-f", fmt,
+                "--print", "urls",
+                "--no-warnings",
+                "--no-playlist",
+                url,
+            ]
+            logger.debug("Resolving audio URL (fmt=%s): %s", fmt, " ".join(cmd[:6]))
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            handle.ytdlp_proc = proc
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+
+            if proc.returncode == 0:
+                audio_url = stdout.decode().strip().splitlines()[0]
+                logger.info("Resolved audio URL with fmt=%s (%d chars)", fmt, len(audio_url))
+                return audio_url
+
+            logger.debug("fmt=%s failed: %s", fmt, stderr.decode(errors="replace").strip()[:200])
+
+        raise RuntimeError(
+            f"yt-dlp could not resolve any audio format for: {url}"
         )
-        handle.ytdlp_proc = proc
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
-
-        if proc.returncode != 0:
-            err = stderr.decode(errors="replace").strip()
-            raise RuntimeError(f"yt-dlp failed (rc={proc.returncode}): {err}")
-
-        audio_url = stdout.decode().strip().splitlines()[0]
-        logger.info("Resolved audio URL (%d chars)", len(audio_url))
-        return audio_url
 
     async def _start_ffmpeg(self, audio_url: str) -> asyncio.subprocess.Process:
         """Launch ffmpeg to read the audio stream and output raw PCM to stdout."""

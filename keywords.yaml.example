@@ -1,0 +1,35 @@
+# Custom keywords for Diaricat Live alert detection.
+# Copy to keywords.yaml and set DIARICAT_LIVE_ALERT_KEYWORDS_FILE=keywords.yaml
+#
+# Each keyword triggers an alert when detected in live transcriptions.
+# Fields:
+#   pattern  - text to match (case insensitive, word boundary)
+#   sector   - category for grouping (finanzas, economia, sindical, energia, agro, custom)
+#   urgency  - 1 (low) to 10 (critical)
+
+keywords:
+  # Ejemplo: monitorear menciones de empresas específicas
+  - pattern: "Techint"
+    sector: "mercado"
+    urgency: 6
+
+  - pattern: "Mercado Libre"
+    sector: "mercado"
+    urgency: 6
+
+  - pattern: "Galicia"
+    sector: "finanzas"
+    urgency: 5
+
+  # Ejemplo: monitorear temas políticos que impactan mercados
+  - pattern: "decreto"
+    sector: "regulatorio"
+    urgency: 7
+
+  - pattern: "DNU"
+    sector: "regulatorio"
+    urgency: 8
+
+  - pattern: "ley bases"
+    sector: "regulatorio"
+    urgency: 8

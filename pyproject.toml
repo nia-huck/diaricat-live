@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "diaricat-live"
 version = "0.1.0"
-description = "Live audio stream transcription and alert service for Nyx Terminal"
+description = "Real-time audio stream transcription service via Faster Whisper"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"

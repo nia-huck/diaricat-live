@@ -1,8 +1,8 @@
 # Diaricat Live
 
-Real-time audio stream transcription and financial alert service. Captures audio from YouTube and internet streams, transcribes with Faster Whisper, and emits events via SSE.
+Real-time audio stream transcription service. Captures audio from YouTube and internet streams, transcribes with Faster Whisper, and emits events via SSE.
 
-Built as a companion service for [Diaricat](https://github.com/nia-huck/Diaricat) and [Nyx Terminal](https://github.com/nia-huck).
+Built as a companion to [Diaricat](https://github.com/nia-huck/Diaricat) — extending local transcription to live streams.
 
 ## How it works
 
@@ -15,16 +15,14 @@ YouTube/Stream URL
        │
    Faster Whisper (speech-to-text, chunked)
        │
-   Alert Service (keyword detection)
-       │
-   SSE events → your frontend
+   SSE events → your app
 ```
 
 ## Features
 
 - **Live transcription** from any YouTube video or internet audio stream
-- **Financial keyword alerts** with 38 built-in Argentine economic/financial terms
-- **SSE (Server-Sent Events)** for real-time consumption from any frontend
+- **Keyword detection** with configurable alert rules
+- **SSE (Server-Sent Events)** for real-time consumption from any client
 - **Multiple simultaneous streams** (configurable, default 3)
 - **Automatic format fallback** for HLS streams (YouTube Live, etc.)
 - **CUDA with CPU fallback** — auto-detects GPU availability
@@ -80,7 +78,7 @@ Events emitted:
 | Event | Description |
 |---|---|
 | `transcript` | Finalized transcript segment with text, timestamps |
-| `alert` | Keyword detected — includes keyword, context, urgency (1-10), sector |
+| `alert` | Keyword detected — includes keyword, context, urgency (1-10), category |
 | `status` | Periodic heartbeat with session stats |
 | `error` | Error notification |
 
@@ -88,10 +86,10 @@ Example SSE output:
 
 ```
 event: transcript
-data: {"type":"transcript","session_id":"live-0001","text":"El ministro dijo que el dólar se va a mantener estable","start":125.3,"end":130.1,"language":"es"}
+data: {"type":"transcript","session_id":"live-0001","text":"The president announced new measures today","start":125.3,"end":130.1,"language":"es"}
 
 event: alert
-data: {"type":"alert","session_id":"live-0001","keyword":"dólar","text":"...el dólar se va a mantener estable...","urgency":7,"sector":"finanzas"}
+data: {"type":"alert","session_id":"live-0001","keyword":"measures","text":"...announced new measures today...","urgency":7,"sector":"custom"}
 ```
 
 ### Stop a stream
@@ -137,26 +135,30 @@ es.addEventListener("transcript", (e) => {
 
 es.addEventListener("alert", (e) => {
   const data = JSON.parse(e.data);
-  console.log(`ALERT [${data.sector}] ${data.keyword}: ${data.text}`);
+  console.log(`ALERT: ${data.keyword} — ${data.text}`);
 });
 ```
 
-## Built-in alert keywords
+## Custom keywords
 
-Focused on Argentine financial/economic news:
+Keywords can be added per-request:
 
-| Category | Keywords | Urgency |
-|---|---|---|
-| Currency | dólar, blue, CCL, MEP, cepo, devaluación, tipo de cambio | 6-9 |
-| Central Bank | BCRA, banco central, tasa de interés, BADLAR, reservas | 6-8 |
-| Economy | inflación, IPC, recesión, PBI, déficit, superávit | 7-8 |
-| IMF/Debt | FMI, desembolso | 8-9 |
-| Markets | merval, bonos, riesgo país, ADR | 6-7 |
-| Labor | paritarias, paro, huelga, CGT | 6-8 |
-| Energy | YPF, Vaca Muerta, tarifas, petróleo | 6-7 |
-| Agriculture | soja | 6 |
+```json
+{
+  "url": "https://www.youtube.com/watch?v=...",
+  "language": "es",
+  "keywords": ["keyword1", "keyword2"]
+}
+```
 
-Custom keywords can be added per-request or via a `keywords.yaml` file.
+Or via a `keywords.yaml` file (see `keywords.yaml.example`):
+
+```yaml
+keywords:
+  - pattern: "breaking news"
+    sector: "media"
+    urgency: 8
+```
 
 ## Configuration
 
@@ -184,7 +186,7 @@ src/diaricat_live/
 ├── core/live_engine.py         # Session manager, transcription loop
 ├── services/
 │   ├── stream_capture.py       # yt-dlp + ffmpeg audio pipe
-│   └── alert_service.py        # Keyword scanner (38 built-in rules)
+│   └── alert_service.py        # Configurable keyword scanner
 ├── models/stream.py            # Pydantic schemas
 ├── settings.py                 # Configuration via env vars
 └── run.py                      # Entry point
